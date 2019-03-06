@@ -4,7 +4,7 @@ jobs:
         working_directory: ~/app
 
         docker:
-            - image: circleci/ruby2.6.0
+            - image: circleci/ruby:2.6.0
               environment:
                 PGHOST: localhost
                 PGUSER: mamamboga-api
