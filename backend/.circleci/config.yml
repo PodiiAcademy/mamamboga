@@ -1,0 +1,41 @@
+version: 2
+jobs:
+    build:
+        working_directory: ~/app
+
+          docker:
+            - image: circleci/ruby
+              environment:
+                PGHOST: localhost
+                PGUSER: mamamboga-api
+                RAILS_ENV: test
+            - image: postgres: 10.6
+              environment:
+                POSTGRES_USER: mamamboga-api
+                POSTGRES_DB: mamamboga-api_test
+                POSTGRES_PASSWORD: ""
+          steps:
+              - checkout
+
+              - type: cache-restore
+                  name: Restore bundle cache
+                  key: mamamboga-api-{{ checksum "Gemfile.lock" }}
+              - run: bundle install --path vendor/bundle
+
+              - type: cache-save
+                  name: Store bundle cache
+                  key: mamamboga-api-{{ checksum "Gemfile.lock" }}
+                  paths:
+                    - vendor/bundle
+
+              - run: dockerize -wait tcp://localhost:5432 -timeout 1m
+
+              - run: bundle exec rake db:setup
+              - run:
+                    name: Run rspec in parallel
+                    command: |
+                      bundle exec rspec --profile 10 \
+                                        --format RspecJunitFormatter \
+                                        --out test_results/rspec.xml \
+                                        --format progress \
+                                        $(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)
