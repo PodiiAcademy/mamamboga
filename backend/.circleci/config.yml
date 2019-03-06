@@ -1,41 +1,53 @@
 version: 2
 jobs:
-    build:
-        working_directory: ~/app
+  build:
+    parallelism: 3
+    docker:
+      - image: circleci/ruby:2.6.0
+        environment:
+          BUNDLE_JOBS: '3'
+          BUNDLE_RETRY: '3'
+          BUNDLE_PATH: vendor/bundle
+          PGHOST: 127.0.0.1
+          PGUSER: mamamboga-api
+          RAILS_ENV: test
+      - image: circleci/postgres:10.6
+        environment:
+          POSTGRES_USER: mamamboga-api
+          POSTGRES_DB: mamamboga-api
+          POSTGRES_PASSWORD: ""
+    steps:
+      - checkout
 
-        docker:
-            - image: circleci/ruby:2.6.0
-              environment:
-                PGHOST: localhost
-                PGUSER: mamamboga-api
-                RAILS_ENV: test
-            - image: postgres: 10.6
-              environment:
-                POSTGRES_USER: mamamboga-api
-                POSTGRES_DB: mamamboga-api_test
-                POSTGRES_PASSWORD: ""
-          steps:
-              - checkout
+      - run:
+          name: Which bundler?
+          command: bundle -v
 
-              - type: cache-restore
-                  name: Restore bundle cache
-                  key: mamamboga-api-{{ checksum "Gemfile.lock" }}
-              - run: bundle install --path vendor/bundle
+      - restore_cache:
+          keys:
+            - rails-demo-bundle-v2-{{ checksum "Gemfile.lock" }}
+            - rails-demo-bundle-v2-
 
-              - type: cache-save
-                  name: Store bundle cache
-                  key: mamamboga-api-{{ checksum "Gemfile.lock" }}
-                  paths:
-                    - vendor/bundle
+      - run:
+          name: Bundle Install
+          command: bundle check || bundle install
 
-              - run: dockerize -wait tcp://localhost:5432 -timeout 1m
+      - save_cache:
+          key: mamamboga-api-v2-{{ checksum "Gemfile.lock" }}
+          paths:
+            - vendor/bundle
+            - run:
+          name: Wait for DB
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
 
-              - run: bundle exec rake db:setup
-              - run:
-                    name: Run rspec in parallel
-                    command: |
-                      bundle exec rspec --profile 10 \
-                                        --format RspecJunitFormatter \
-                                        --out test_results/rspec.xml \
-                                        --format progress \
-                                        $(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)
+      - run:
+          name: Database setup
+          command: bin/rails db:schema:load --trace
+      - run:
+          name: Run rspec in parallel
+          command: |
+            bundle exec rspec --profile 10 \
+                              --format RspecJunitFormatter \
+                              --out test_results/rspec.xml \
+                              --format progress \
+                              $(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)
